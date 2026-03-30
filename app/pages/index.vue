@@ -15,7 +15,7 @@ type UpscaleOptions = {
 type HealthStatus = 'checking' | 'online' | 'offline'
 type ColorChannel = 'fill' | 'stroke'
 type ColorChangePayload = { from: string, to: string, kind: ColorChannel }
-type VectorElementSelectPayload = { id: string, color: string }
+type VectorSelectionChangePayload = { ids: string[], activeId: string, color: string }
 
 const {
   vectorize,
@@ -31,8 +31,10 @@ const svgResult = ref('')
 const processing = ref(false)
 const processingText = ref('Procesando imagen...')
 const errorMessage = ref('')
-const selectedElementId = ref('')
+const selectedElementIds = ref<string[]>([])
 const selectedElementColor = ref('#000000')
+const svgHistory = ref<string[]>([])
+const autoFitEnabled = ref(true)
 
 const healthStatus = ref<HealthStatus>('checking')
 const healthText = ref('Conectando con backend...')
@@ -41,6 +43,10 @@ const metrics = ref<Record<string, unknown> | null>(null)
 const hasFile = computed(() => Boolean(selectedFile.value))
 const hasSvg = computed(() => Boolean(svgResult.value))
 const fileName = computed(() => selectedFile.value?.name ?? '')
+const activeSelectedElementId = computed(() => {
+  return selectedElementIds.value.length ? selectedElementIds.value[selectedElementIds.value.length - 1] : ''
+})
+const selectedElementCount = computed(() => selectedElementIds.value.length)
 
 const statusClass = computed(() => {
   if (healthStatus.value === 'online') {
@@ -86,8 +92,31 @@ const summarizePayload = (payload: unknown) => {
 }
 
 const resetElementSelection = () => {
-  selectedElementId.value = ''
+  selectedElementIds.value = []
   selectedElementColor.value = '#000000'
+}
+
+const pushSvgHistory = () => {
+  if (!svgResult.value) {
+    return
+  }
+
+  svgHistory.value.push(svgResult.value)
+
+  if (svgHistory.value.length > 30) {
+    svgHistory.value.shift()
+  }
+}
+
+const undoLastSvgChange = () => {
+  const previous = svgHistory.value.pop()
+
+  if (!previous) {
+    return
+  }
+
+  svgResult.value = previous
+  resetElementSelection()
 }
 
 const markPaintableNodes = (svg: string) => {
@@ -118,7 +147,7 @@ const markPaintableNodes = (svg: string) => {
     }
   }
 
-  const paintable = doc.querySelectorAll('path, circle, ellipse, rect, polygon, polyline, line, text, g')
+  const paintable = doc.querySelectorAll('path, circle, ellipse, rect, polygon, polyline, line, text')
   let index = 1
 
   for (const node of paintable) {
@@ -141,9 +170,100 @@ const markPaintableNodes = (svg: string) => {
   return serializer.serializeToString(doc.documentElement)
 }
 
-const setVectorSvg = (svg: string) => {
+const serializeSvg = (svgElement: SVGSVGElement) => {
+  const serializer = new XMLSerializer()
+  return serializer.serializeToString(svgElement)
+}
+
+const autoFitSvgToContent = async (recordHistory = true) => {
+  if (!import.meta.client || !svgResult.value) {
+    return false
+  }
+
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(svgResult.value, 'image/svg+xml')
+  const root = doc.documentElement as unknown as SVGSVGElement
+
+  if (!root || root.tagName.toLowerCase() !== 'svg') {
+    return false
+  }
+
+  const host = document.createElement('div')
+  host.style.position = 'fixed'
+  host.style.left = '-100000px'
+  host.style.top = '-100000px'
+  host.style.visibility = 'hidden'
+  host.style.pointerEvents = 'none'
+  host.style.width = '0'
+  host.style.height = '0'
+  host.style.overflow = 'hidden'
+
+  const liveSvg = root.cloneNode(true) as SVGSVGElement
+  liveSvg.removeAttribute('width')
+  liveSvg.removeAttribute('height')
+  host.appendChild(liveSvg)
+  document.body.appendChild(host)
+
+  let minX = Number.POSITIVE_INFINITY
+  let minY = Number.POSITIVE_INFINITY
+  let maxX = Number.NEGATIVE_INFINITY
+  let maxY = Number.NEGATIVE_INFINITY
+
+  const graphics = liveSvg.querySelectorAll<SVGGraphicsElement>('path, circle, ellipse, rect, polygon, polyline, line, text, use')
+
+  for (const node of graphics) {
+    try {
+      const bbox = node.getBBox()
+
+      if (!Number.isFinite(bbox.x) || !Number.isFinite(bbox.y)) {
+        continue
+      }
+
+      if (bbox.width === 0 && bbox.height === 0) {
+        continue
+      }
+
+      minX = Math.min(minX, bbox.x)
+      minY = Math.min(minY, bbox.y)
+      maxX = Math.max(maxX, bbox.x + bbox.width)
+      maxY = Math.max(maxY, bbox.y + bbox.height)
+    } catch {
+      continue
+    }
+  }
+
+  document.body.removeChild(host)
+
+  if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+    return false
+  }
+
+  const width = Math.max(1, maxX - minX)
+  const height = Math.max(1, maxY - minY)
+  const padding = Math.max(2, Math.max(width, height) * 0.04)
+  const nextViewBox = `${minX - padding} ${minY - padding} ${width + padding * 2} ${height + padding * 2}`
+
+  root.setAttribute('viewBox', nextViewBox)
+  root.setAttribute('preserveAspectRatio', 'xMidYMid meet')
+  root.removeAttribute('width')
+  root.removeAttribute('height')
+
+  if (recordHistory) {
+    pushSvgHistory()
+  }
+
+  svgResult.value = serializeSvg(root)
+  return true
+}
+
+const setVectorSvg = async (svg: string) => {
+  svgHistory.value = []
   svgResult.value = markPaintableNodes(svg)
   resetElementSelection()
+
+  if (autoFitEnabled.value) {
+    await autoFitSvgToContent(false)
+  }
 }
 
 const revokePreviewUrl = () => {
@@ -165,6 +285,7 @@ const setFile = (file: File) => {
 const clearFile = () => {
   selectedFile.value = null
   svgResult.value = ''
+  svgHistory.value = []
   errorMessage.value = ''
   resetElementSelection()
   revokePreviewUrl()
@@ -227,7 +348,7 @@ const runBasicVectorize = async () => {
   await withLoader('Vectorizando (modo básico)...', async () => {
     const file = requireFile()
     const result = await vectorize(file)
-    setVectorSvg(result.svg)
+    await setVectorSvg(result.svg)
     await refreshMetrics()
   })
 }
@@ -236,7 +357,7 @@ const runAdvancedVectorize = async (options: AdvancedOptions) => {
   await withLoader('Vectorizando (modo avanzado)...', async () => {
     const file = requireFile()
     const result = await vectorizeAdvanced(file, options)
-    setVectorSvg(result.svg)
+    await setVectorSvg(result.svg)
     await refreshMetrics()
   })
 }
@@ -245,7 +366,7 @@ const runUpscaleVectorize = async (options: UpscaleOptions) => {
   await withLoader('Procesando en alta calidad...', async () => {
     const file = requireFile()
     const result = await upscaleVectorize(file, options)
-    setVectorSvg(result.svg)
+    await setVectorSvg(result.svg)
     await refreshMetrics()
   })
 }
@@ -344,7 +465,7 @@ const replaceColorInStyle = (
   return touched ? next.join(';') : style
 }
 
-const setStyleProperty = (style: string, property: ColorChannel, value: string) => {
+const setStyleProperty = (style: string, property: string, value: string) => {
   const entries = style
     .split(';')
     .map(entry => entry.trim())
@@ -370,10 +491,129 @@ const setStyleProperty = (style: string, property: ColorChannel, value: string) 
   return next.join(';')
 }
 
+const isVisiblePaint = (value: string) => {
+  const normalized = value.trim().toLowerCase()
+
+  if (!normalized) {
+    return false
+  }
+
+  if (normalized === 'none' || normalized === 'transparent') {
+    return false
+  }
+
+  if (normalized.startsWith('url(')) {
+    return false
+  }
+
+  return true
+}
+
+const getStyleProperty = (style: string, property: string) => {
+  const entries = style
+    .split(';')
+    .map(entry => entry.trim())
+    .filter(Boolean)
+
+  for (const entry of entries) {
+    const [prop, ...rest] = entry.split(':')
+
+    if (!prop || !rest.length) {
+      continue
+    }
+
+    if (prop.trim().toLowerCase() === property) {
+      return rest.join(':').trim()
+    }
+  }
+
+  return ''
+}
+
+const resolvePaintValue = (element: Element, property: ColorChannel) => {
+  const style = element.getAttribute('style') || ''
+  const styleValue = getStyleProperty(style, property)
+
+  if (styleValue) {
+    return styleValue
+  }
+
+  return element.getAttribute(property)?.trim() ?? ''
+}
+
+const getGeometrySignature = (element: Element) => {
+  const tag = element.tagName.toLowerCase()
+  const read = (name: string) => element.getAttribute(name)?.trim() ?? ''
+
+  if (tag === 'path') {
+    return `${tag}|${read('d')}`
+  }
+
+  if (tag === 'circle') {
+    return `${tag}|${read('cx')}|${read('cy')}|${read('r')}`
+  }
+
+  if (tag === 'ellipse') {
+    return `${tag}|${read('cx')}|${read('cy')}|${read('rx')}|${read('ry')}`
+  }
+
+  if (tag === 'rect') {
+    return `${tag}|${read('x')}|${read('y')}|${read('width')}|${read('height')}|${read('rx')}|${read('ry')}`
+  }
+
+  if (tag === 'polygon' || tag === 'polyline') {
+    return `${tag}|${read('points')}`
+  }
+
+  if (tag === 'line') {
+    return `${tag}|${read('x1')}|${read('y1')}|${read('x2')}|${read('y2')}`
+  }
+
+  if (tag === 'text') {
+    return `${tag}|${read('x')}|${read('y')}|${element.textContent?.trim() ?? ''}`
+  }
+
+  return ''
+}
+
+const setElementTransparent = (element: Element) => {
+  element.setAttribute('fill', 'none')
+  element.setAttribute('stroke', 'none')
+  element.setAttribute('fill-opacity', '0')
+  element.setAttribute('stroke-opacity', '0')
+
+  const style = element.getAttribute('style') || ''
+  let nextStyle = setStyleProperty(style, 'fill', 'none')
+  nextStyle = setStyleProperty(nextStyle, 'stroke', 'none')
+  nextStyle = setStyleProperty(nextStyle, 'fill-opacity', '0')
+  nextStyle = setStyleProperty(nextStyle, 'stroke-opacity', '0')
+  element.setAttribute('style', nextStyle)
+}
+
+const setElementFillTransparent = (element: Element) => {
+  element.setAttribute('fill', 'none')
+  element.setAttribute('fill-opacity', '0')
+
+  const style = element.getAttribute('style') || ''
+  let nextStyle = setStyleProperty(style, 'fill', 'none')
+  nextStyle = setStyleProperty(nextStyle, 'fill-opacity', '0')
+  element.setAttribute('style', nextStyle)
+}
+
+const hasVisibleFill = (element: Element) => {
+  return isVisiblePaint(resolvePaintValue(element, 'fill'))
+}
+
+const hasVisibleStroke = (element: Element) => {
+  return isVisiblePaint(resolvePaintValue(element, 'stroke'))
+}
+
 const applyColorChange = (payload: ColorChangePayload) => {
   if (!svgResult.value || !import.meta.client) {
     return
   }
+
+  pushSvgHistory()
 
   const parser = new DOMParser()
   const doc = parser.parseFromString(svgResult.value, 'image/svg+xml')
@@ -407,49 +647,112 @@ const applyColorChange = (payload: ColorChangePayload) => {
   svgResult.value = serializer.serializeToString(doc.documentElement)
 }
 
-const onVectorElementSelect = (payload: VectorElementSelectPayload | null) => {
-  if (!payload) {
-    resetElementSelection()
-    return
-  }
-
-  selectedElementId.value = payload.id
+const onVectorSelectionChange = (payload: VectorSelectionChangePayload) => {
+  selectedElementIds.value = payload.ids
   const normalized = normalizeColor(payload.color)
   selectedElementColor.value = /^#[0-9a-f]{6}$/.test(normalized) ? normalized : '#000000'
 }
 
 const applySelectedElementColor = (color: string) => {
-  if (!svgResult.value || !selectedElementId.value || !import.meta.client) {
+  if (!svgResult.value || !selectedElementIds.value.length || !import.meta.client) {
     return
   }
+
+  pushSvgHistory()
 
   const parser = new DOMParser()
   const doc = parser.parseFromString(svgResult.value, 'image/svg+xml')
-  const selected = doc.querySelector(`[data-editor-id="${selectedElementId.value}"]`)
 
-  if (!selected) {
-    return
-  }
+  for (const id of selectedElementIds.value) {
+    const selected = doc.querySelector(`[data-editor-id="${id}"]`)
 
-  const fill = selected.getAttribute('fill')?.trim()
-  const stroke = selected.getAttribute('stroke')?.trim()
-  const style = selected.getAttribute('style') || ''
+    if (!selected) {
+      continue
+    }
 
-  if (fill && fill !== 'none' && fill !== 'transparent') {
-    selected.setAttribute('fill', color)
-  } else if (stroke && stroke !== 'none' && stroke !== 'transparent') {
-    selected.setAttribute('stroke', color)
-  } else if (style.includes('fill:')) {
-    selected.setAttribute('style', setStyleProperty(style, 'fill', color))
-  } else if (style.includes('stroke:')) {
-    selected.setAttribute('style', setStyleProperty(style, 'stroke', color))
-  } else {
-    selected.setAttribute('fill', color)
+    const fill = selected.getAttribute('fill')?.trim()
+    const stroke = selected.getAttribute('stroke')?.trim()
+    const style = selected.getAttribute('style') || ''
+    const selectedGeometry = getGeometrySignature(selected)
+    const selectedHasStroke = hasVisibleStroke(selected)
+
+    if (color === 'none' || color === 'transparent') {
+      if (selectedHasStroke) {
+        setElementFillTransparent(selected)
+      } else {
+        setElementTransparent(selected)
+      }
+
+      if (selectedGeometry) {
+        for (const candidate of doc.querySelectorAll('[data-editor-id]')) {
+          if (candidate === selected) {
+            continue
+          }
+
+          if (getGeometrySignature(candidate) !== selectedGeometry) {
+            continue
+          }
+
+          if (hasVisibleStroke(candidate)) {
+            continue
+          }
+
+          if (!hasVisibleFill(candidate)) {
+            continue
+          }
+
+          setElementFillTransparent(candidate)
+        }
+      }
+
+      continue
+    }
+
+    if (fill && fill !== 'none' && fill !== 'transparent') {
+      selected.setAttribute('fill', color)
+    } else if (stroke && stroke !== 'none' && stroke !== 'transparent') {
+      selected.setAttribute('stroke', color)
+    } else if (style.includes('fill:')) {
+      selected.setAttribute('style', setStyleProperty(style, 'fill', color))
+    } else if (style.includes('stroke:')) {
+      selected.setAttribute('style', setStyleProperty(style, 'stroke', color))
+    } else {
+      selected.setAttribute('fill', color)
+    }
   }
 
   const serializer = new XMLSerializer()
   svgResult.value = serializer.serializeToString(doc.documentElement)
-  selectedElementColor.value = color
+  const normalized = normalizeColor(color)
+  selectedElementColor.value = /^#[0-9a-f]{6}$/.test(normalized) ? normalized : '#000000'
+}
+
+const removeSelectedElements = async () => {
+  if (!svgResult.value || !selectedElementIds.value.length || !import.meta.client) {
+    return
+  }
+
+  pushSvgHistory()
+
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(svgResult.value, 'image/svg+xml')
+
+  for (const id of selectedElementIds.value) {
+    const selected = doc.querySelector(`[data-editor-id="${id}"]`)
+    selected?.remove()
+  }
+
+  const serializer = new XMLSerializer()
+  svgResult.value = serializer.serializeToString(doc.documentElement)
+  resetElementSelection()
+
+  if (autoFitEnabled.value) {
+    await autoFitSvgToContent(false)
+  }
+}
+
+const runManualAutoFit = async () => {
+  await autoFitSvgToContent(true)
 }
 
 const downloadSvg = () => {
@@ -631,15 +934,57 @@ onBeforeUnmount(() => {
             <VectorPreview
               :svg="svgResult"
               :interactive="hasSvg"
-              :selected-element-id="selectedElementId"
-              @element-select="onVectorElementSelect"
+              :selected-element-ids="selectedElementIds"
+              @selection-change="onVectorSelectionChange"
             />
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3">
+            <UButton
+              icon="i-lucide-trash-2"
+              color="error"
+              variant="soft"
+              :label="selectedElementCount ? `Eliminar seleccionados (${selectedElementCount})` : 'Eliminar seleccionados'"
+              :disabled="processing || !selectedElementCount"
+              @click="removeSelectedElements"
+            />
+            <UButton
+              icon="i-lucide-mouse-pointer-click"
+              color="neutral"
+              variant="ghost"
+              label="Deseleccionar"
+              :disabled="processing || !selectedElementCount"
+              @click="resetElementSelection"
+            />
+            <UButton
+              icon="i-lucide-undo-2"
+              color="neutral"
+              variant="ghost"
+              label="Deshacer"
+              :disabled="processing || !svgHistory.length"
+              @click="undoLastSvgChange"
+            />
+            <UButton
+              icon="i-lucide-frame"
+              color="neutral"
+              variant="soft"
+              label="Ajustar encuadre"
+              :disabled="processing || !hasSvg"
+              @click="runManualAutoFit"
+            />
+            <label class="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-600">
+              <input v-model="autoFitEnabled" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-cyan-600">
+              Auto-encuadre
+            </label>
+            <p class="text-xs text-slate-500">
+              Consejo: usa Ctrl/Cmd/Shift + click para seleccionar múltiples elementos.
+            </p>
           </div>
 
           <ColorEditor
             :svg="svgResult"
             :disabled="processing || !hasSvg"
-            :selected-element-id="selectedElementId"
+            :selected-element-id="activeSelectedElementId"
             :selected-element-color="selectedElementColor"
             @color-change="applyColorChange"
             @selected-color-change="applySelectedElementColor"

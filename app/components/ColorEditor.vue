@@ -196,6 +196,22 @@ const onSelectedColorInput = (event: Event) => {
 
   emit('selected-color-change', nextColor)
 }
+
+const setEntryTransparent = (entry: SvgColorEntry) => {
+  if (props.disabled) {
+    return
+  }
+
+  emit('color-change', { from: entry.raw, to: 'none', kind: entry.kind })
+}
+
+const setSelectedTransparent = () => {
+  if (props.disabled) {
+    return
+  }
+
+  emit('selected-color-change', 'none')
+}
 </script>
 
 <template>
@@ -221,13 +237,23 @@ const onSelectedColorInput = (event: Event) => {
         Elemento seleccionado: <code>{{ selectedElementId }}</code>
       </p>
 
-      <input
-        type="color"
-        class="h-8 w-10 cursor-pointer rounded border border-cyan-300 bg-white"
-        :value="selectedElementColor"
-        :disabled="disabled"
-        @input="onSelectedColorInput"
-      >
+      <div class="flex items-center gap-2">
+        <input
+          type="color"
+          class="h-8 w-10 cursor-pointer rounded border border-cyan-300 bg-white"
+          :value="selectedElementColor"
+          :disabled="disabled"
+          @input="onSelectedColorInput"
+        >
+        <UButton
+          label="Transparente"
+          color="neutral"
+          variant="outline"
+          size="xs"
+          :disabled="disabled"
+          @click="setSelectedTransparent"
+        />
+      </div>
     </div>
 
     <div v-if="svg && colors.length === 0" class="rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-400">
@@ -251,13 +277,23 @@ const onSelectedColorInput = (event: Event) => {
           </span>
         </div>
 
-        <input
-          type="color"
-          class="h-8 w-10 cursor-pointer rounded border border-slate-300 bg-white"
-          :value="entry.hex"
-          :disabled="disabled"
-          @input="onColorInput(entry, $event)"
-        >
+        <div class="flex items-center gap-2">
+          <input
+            type="color"
+            class="h-8 w-10 cursor-pointer rounded border border-slate-300 bg-white"
+            :value="entry.hex"
+            :disabled="disabled"
+            @input="onColorInput(entry, $event)"
+          >
+          <UButton
+            label="Transparente"
+            color="neutral"
+            variant="ghost"
+            size="xs"
+            :disabled="disabled"
+            @click="setEntryTransparent(entry)"
+          />
+        </div>
       </div>
     </div>
   </section>
