@@ -1,7 +1,5 @@
 <script setup lang="ts">
-defineOptions({
-  name: 'AppLoader'
-})
+defineOptions({ name: 'AppLoader' })
 
 withDefaults(defineProps<{
   show: boolean
@@ -15,14 +13,17 @@ withDefaults(defineProps<{
   <transition name="fade">
     <div
       v-if="show"
-      class="fixed inset-0 z-50 grid place-items-center bg-slate-950/30 backdrop-blur-[2px]"
+      class="fixed inset-0 z-50 grid place-items-center bg-slate-950/20 backdrop-blur-sm"
     >
-      <div class="w-[260px] rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
-        <div class="flex items-center gap-3">
-          <span class="h-5 w-5 animate-spin rounded-full border-2 border-cyan-200 border-t-cyan-600" />
-          <p class="text-sm font-medium text-slate-700">
-            {{ text }}
-          </p>
+      <div class="w-72 overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-2xl shadow-slate-900/10">
+        <div class="h-0.5 w-full overflow-hidden bg-slate-100">
+          <div class="h-full w-1/2 animate-[slide_1.2s_ease-in-out_infinite] rounded-full bg-linear-to-r from-cyan-400 to-cyan-600" />
+        </div>
+        <div class="flex items-center gap-3 px-5 py-4">
+          <div class="shrink-0 rounded-full bg-cyan-50 p-2">
+            <span class="block h-4 w-4 animate-spin rounded-full border-2 border-cyan-200 border-t-cyan-500" />
+          </div>
+          <p class="text-sm font-medium text-slate-700">{{ text }}</p>
         </div>
       </div>
     </div>
@@ -30,13 +31,11 @@ withDefaults(defineProps<{
 </template>
 
 <style scoped>
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 160ms ease;
-}
+.fade-enter-active, .fade-leave-active { transition: opacity 180ms ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
 
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
+@keyframes slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
 }
 </style>

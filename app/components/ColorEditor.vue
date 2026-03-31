@@ -1,10 +1,6 @@
 <script setup lang="ts">
-type SvgColorEntry = {
-  key: string
-  kind: 'fill' | 'stroke'
-  raw: string
-  hex: string
-}
+import type { SvgColorEntry } from '~/types'
+import { isSkippableColor, normalizeColorOrNull } from '~/utils/color'
 
 const props = withDefaults(defineProps<{
   svg?: string
@@ -28,273 +24,83 @@ const colors = ref<SvgColorEntry[]>([])
 const fillPattern = /fill\s*:\s*([^;"']+)/i
 const strokePattern = /stroke\s*:\s*([^;"']+)/i
 
-const rgbToHex = (value: string) => {
-  const parts = value
-    .replace(/rgba?\(/, '')
-    .replace(')', '')
-    .split(',')
-    .slice(0, 3)
-    .map(part => Number.parseInt(part.trim(), 10))
-
-  if (parts.length !== 3 || parts.some(part => Number.isNaN(part))) {
-    return null
-  }
-
-  return `#${parts.map(part => part.toString(16).padStart(2, '0')).join('')}`
-}
-
-const normalizeHex = (value: string) => {
-  const trimmed = value.trim().toLowerCase()
-
-  if (/^#[0-9a-f]{6}$/.test(trimmed)) {
-    return trimmed
-  }
-
-  if (/^#[0-9a-f]{3}$/.test(trimmed)) {
-    return `#${trimmed.slice(1).split('').map(char => `${char}${char}`).join('')}`
-  }
-
-  if (trimmed.startsWith('rgb')) {
-    return rgbToHex(trimmed)
-  }
-
-  if (!import.meta.client) {
-    return null
-  }
-
-  const canvas = document.createElement('canvas')
-  const context = canvas.getContext('2d')
-
-  if (!context) {
-    return null
-  }
-
-  context.fillStyle = '#000'
-  context.fillStyle = trimmed
-
-  const computed = context.fillStyle.toLowerCase()
-
-  if (computed.startsWith('#')) {
-    return normalizeHex(computed)
-  }
-
-  if (computed.startsWith('rgb')) {
-    return rgbToHex(computed)
-  }
-
-  return null
-}
-
-const isSkippableColor = (value: string) => {
-  const normalized = value.trim().toLowerCase()
-  return normalized === 'none' || normalized === 'transparent' || normalized.startsWith('url(')
-}
-
-const collectColors = (svg: string) => {
-  if (!svg || !import.meta.client) {
-    return []
-  }
-
-  const parser = new DOMParser()
-  const doc = parser.parseFromString(svg, 'image/svg+xml')
+const collectColors = (svg: string): SvgColorEntry[] => {
+  if (!svg || !import.meta.client) return []
+  const doc = new DOMParser().parseFromString(svg, 'image/svg+xml')
   const found = new Map<string, SvgColorEntry>()
 
-  const registerColor = (kind: 'fill' | 'stroke', raw: string) => {
-    const hex = normalizeHex(raw)
-
-    if (!hex) {
-      return
-    }
-
-    const key = `${kind}:${raw}`
-    found.set(key, { key, kind, raw, hex })
+  const register = (kind: 'fill' | 'stroke', raw: string) => {
+    const hex = normalizeColorOrNull(raw)
+    if (hex) found.set(`${kind}:${raw}`, { key: `${kind}:${raw}`, kind, raw, hex })
   }
 
-  for (const element of doc.querySelectorAll('[fill]')) {
-    const fill = element.getAttribute('fill')?.trim()
-
-    if (!fill || isSkippableColor(fill)) {
-      continue
-    }
-
-    registerColor('fill', fill)
+  for (const el of doc.querySelectorAll('[fill]')) {
+    const v = el.getAttribute('fill')?.trim()
+    if (v && !isSkippableColor(v)) register('fill', v)
   }
-
-  for (const element of doc.querySelectorAll('[stroke]')) {
-    const stroke = element.getAttribute('stroke')?.trim()
-
-    if (!stroke || isSkippableColor(stroke)) {
-      continue
-    }
-
-    registerColor('stroke', stroke)
+  for (const el of doc.querySelectorAll('[stroke]')) {
+    const v = el.getAttribute('stroke')?.trim()
+    if (v && !isSkippableColor(v)) register('stroke', v)
   }
-
-  for (const element of doc.querySelectorAll('[style*="fill:"]')) {
-    const style = element.getAttribute('style')
-
-    if (!style) {
-      continue
-    }
-
-    const match = style.match(fillPattern)
-    const fill = match?.[1]?.trim()
-
-    if (!fill || isSkippableColor(fill)) {
-      continue
-    }
-
-    registerColor('fill', fill)
+  for (const el of doc.querySelectorAll('[style*="fill:"]')) {
+    const m = el.getAttribute('style')?.match(fillPattern)
+    const v = m?.[1]?.trim()
+    if (v && !isSkippableColor(v)) register('fill', v)
   }
-
-  for (const element of doc.querySelectorAll('[style*="stroke:"]')) {
-    const style = element.getAttribute('style')
-
-    if (!style) {
-      continue
-    }
-
-    const match = style.match(strokePattern)
-    const stroke = match?.[1]?.trim()
-
-    if (!stroke || isSkippableColor(stroke)) {
-      continue
-    }
-
-    registerColor('stroke', stroke)
+  for (const el of doc.querySelectorAll('[style*="stroke:"]')) {
+    const m = el.getAttribute('style')?.match(strokePattern)
+    const v = m?.[1]?.trim()
+    if (v && !isSkippableColor(v)) register('stroke', v)
   }
 
   return [...found.values()]
 }
 
-watch(
-  () => props.svg,
-  (value) => {
-    colors.value = collectColors(value)
-  },
-  { immediate: true }
-)
+watch(() => props.svg, svg => { colors.value = collectColors(svg) }, { immediate: true })
 
 const onColorInput = (entry: SvgColorEntry, event: Event) => {
-  const target = event.target as HTMLInputElement
-  const nextColor = target.value?.toLowerCase()
-
-  if (!nextColor || nextColor === entry.hex || props.disabled) {
-    return
-  }
-
-  emit('color-change', { from: entry.raw, to: nextColor, kind: entry.kind })
+  const color = (event.target as HTMLInputElement).value?.toLowerCase()
+  if (!color || color === entry.hex || props.disabled) return
+  emit('color-change', { from: entry.raw, to: color, kind: entry.kind })
 }
 
 const onSelectedColorInput = (event: Event) => {
-  const target = event.target as HTMLInputElement
-  const nextColor = target.value?.toLowerCase()
-
-  if (!nextColor || props.disabled) {
-    return
-  }
-
-  emit('selected-color-change', nextColor)
-}
-
-const setEntryTransparent = (entry: SvgColorEntry) => {
-  if (props.disabled) {
-    return
-  }
-
-  emit('color-change', { from: entry.raw, to: 'none', kind: entry.kind })
-}
-
-const setSelectedTransparent = () => {
-  if (props.disabled) {
-    return
-  }
-
-  emit('selected-color-change', 'none')
+  const color = (event.target as HTMLInputElement).value?.toLowerCase()
+  if (!color || props.disabled) return
+  emit('selected-color-change', color)
 }
 </script>
 
 <template>
-  <section class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-    <div class="mb-3 flex items-center justify-between">
-      <h3 class="text-sm font-semibold text-slate-800">
-        Editor de colores
-      </h3>
-      <span class="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600">
-        {{ colors.length }} colores
-      </span>
+  <section class="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+    <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+      <div>
+        <h3 class="text-sm font-semibold text-slate-900">Editor de colores</h3>
+        <p class="mt-0.5 text-xs text-slate-400">Paleta extraída del SVG</p>
+      </div>
+      <UBadge v-if="colors.length" :label="`${colors.length} colores`" color="neutral" variant="subtle" />
     </div>
 
-    <div v-if="!svg" class="rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-400">
-      Cuando tengas un SVG vectorizado, aquí podrás editar su paleta en tiempo real.
-    </div>
+    <div class="space-y-3 p-5">
+      <div v-if="!svg" class="rounded-xl border border-dashed border-slate-200 p-5 text-center text-xs text-slate-400">
+        Cuando tengas un SVG, aquí podrás editar su paleta en tiempo real.
+      </div>
 
-    <div
-      v-if="svg && selectedElementId"
-      class="mb-3 flex items-center justify-between rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2"
-    >
-      <p class="text-xs font-medium text-cyan-800">
-        Elemento seleccionado: <code>{{ selectedElementId }}</code>
-      </p>
-
-      <div class="flex items-center gap-2">
-        <input
-          type="color"
-          class="h-8 w-10 cursor-pointer rounded border border-cyan-300 bg-white"
-          :value="selectedElementColor"
+      <template v-if="svg">
+        <ColorSelectedColorEditor
+          :selected-element-id="selectedElementId"
+          :selected-element-color="selectedElementColor"
           :disabled="disabled"
-          @input="onSelectedColorInput"
-        >
-        <UButton
-          label="Transparente"
-          color="neutral"
-          variant="outline"
-          size="xs"
-          :disabled="disabled"
-          @click="setSelectedTransparent"
+          @color-input="onSelectedColorInput"
+          @set-transparent="emit('selected-color-change', 'none')"
         />
-      </div>
-    </div>
-
-    <div v-if="svg && colors.length === 0" class="rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-400">
-      No se detectaron colores editables (`fill` o `stroke`) en este SVG.
-    </div>
-
-    <div v-if="svg && colors.length > 0" class="space-y-2">
-      <div
-        v-for="entry in colors"
-        :key="entry.key"
-        class="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
-      >
-        <div class="flex min-w-0 items-center gap-2">
-          <span
-            class="h-5 w-5 shrink-0 rounded-md border border-slate-300"
-            :style="{ backgroundColor: entry.hex }"
-          />
-          <code class="truncate text-xs text-slate-700">{{ entry.raw }}</code>
-          <span class="rounded bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase text-slate-600">
-            {{ entry.kind }}
-          </span>
-        </div>
-
-        <div class="flex items-center gap-2">
-          <input
-            type="color"
-            class="h-8 w-10 cursor-pointer rounded border border-slate-300 bg-white"
-            :value="entry.hex"
-            :disabled="disabled"
-            @input="onColorInput(entry, $event)"
-          >
-          <UButton
-            label="Transparente"
-            color="neutral"
-            variant="ghost"
-            size="xs"
-            :disabled="disabled"
-            @click="setEntryTransparent(entry)"
-          />
-        </div>
-      </div>
+        <ColorList
+          :colors="colors"
+          :disabled="disabled"
+          @color-input="onColorInput"
+          @set-transparent="entry => emit('color-change', { from: entry.raw, to: 'none', kind: entry.kind })"
+        />
+      </template>
     </div>
   </section>
 </template>
