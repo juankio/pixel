@@ -21,7 +21,7 @@ const emit = defineEmits<{
         variant="ghost"
         size="sm"
         icon="i-lucide-heart-pulse"
-        label="Health"
+        label="Estado"
         :disabled="processing"
         @click="emit('refresh-health')"
       />

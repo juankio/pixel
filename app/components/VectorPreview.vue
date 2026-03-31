@@ -11,6 +11,15 @@ const props = withDefaults(defineProps<{
   selectedElementIds: () => []
 })
 
+const ZOOM_STEPS = [50, 75, 100, 125, 150, 200, 300, 400]
+const zoom = ref(100)
+const zoomIndex = computed(() => ZOOM_STEPS.indexOf(zoom.value))
+const canZoomIn = computed(() => zoomIndex.value < ZOOM_STEPS.length - 1)
+const canZoomOut = computed(() => zoomIndex.value > 0)
+const zoomIn = () => { if (canZoomIn.value) zoom.value = ZOOM_STEPS[zoomIndex.value + 1]! }
+const zoomOut = () => { if (canZoomOut.value) zoom.value = ZOOM_STEPS[zoomIndex.value - 1]! }
+const resetZoom = () => { zoom.value = 100 }
+
 const emit = defineEmits<{
   (event: 'selection-change', payload: { ids: string[], activeId: string, color: string }): void
 }>()
@@ -110,14 +119,40 @@ const onCanvasClick = (event: MouseEvent) => {
           Click para seleccionar · Click repetido para ciclar capas
         </p>
       </div>
-      <UBadge label="SVG" color="primary" variant="subtle" size="sm" />
+      <div class="flex items-center gap-2">
+        <div v-if="svg" class="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-1 py-0.5">
+          <button
+            class="flex size-6 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-white hover:text-slate-800 disabled:opacity-30"
+            :disabled="!canZoomOut"
+            title="Reducir"
+            @click="zoomOut"
+          >
+            <UIcon name="i-lucide-minus" class="size-3.5" />
+          </button>
+          <button
+            class="min-w-10 text-center text-[11px] font-semibold text-slate-600 hover:text-cyan-600 transition-colors"
+            title="Restablecer zoom"
+            @click="resetZoom"
+          >{{ zoom }}%</button>
+          <button
+            class="flex size-6 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-white hover:text-slate-800 disabled:opacity-30"
+            :disabled="!canZoomIn"
+            title="Ampliar"
+            @click="zoomIn"
+          >
+            <UIcon name="i-lucide-plus" class="size-3.5" />
+          </button>
+        </div>
+        <UBadge label="SVG" color="primary" variant="subtle" size="sm" />
+      </div>
     </div>
 
-    <div class="grid grow place-items-center bg-slate-50/50 p-4">
+    <div class="grow overflow-auto bg-slate-50/50 p-4">
       <div
         v-if="svg"
         ref="canvasRef"
-        class="vector-canvas h-[320px] w-full overflow-auto rounded-xl p-3 md:h-[430px]"
+        class="vector-canvas w-full rounded-xl p-3 transition-[height] duration-150"
+        :style="{ height: `${Math.round(430 * zoom / 100)}px` }"
         v-html="svg"
         @click="onCanvasClick"
       />

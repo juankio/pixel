@@ -38,6 +38,11 @@ function applyTextAttrs(el: Element, options: TextInsertOptions, dims: { width: 
   el.setAttribute('text-anchor', options.textAnchor)
   el.setAttribute('dominant-baseline', 'middle')
   el.textContent = options.content
+  if (options.rotation !== 0) {
+    el.setAttribute('transform', `rotate(${options.rotation}, ${absX}, ${absY})`)
+  } else {
+    el.removeAttribute('transform')
+  }
 }
 
 export const useTextInsert = (

@@ -17,7 +17,7 @@ const modeOptions = [{ label: 'Rápido', value: 'fast' }, { label: 'Calidad', va
 
     <div>
       <div class="mb-1.5 flex items-center justify-between">
-        <span class="text-xs font-medium text-slate-600">Threshold</span>
+        <span class="text-xs font-medium text-slate-600">Umbral de detección</span>
         <span class="rounded-md bg-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-700">{{ threshold }}</span>
       </div>
       <input v-model.number="threshold" type="range" min="0" max="255" step="1" class="w-full accent-cyan-500">
@@ -25,7 +25,7 @@ const modeOptions = [{ label: 'Rápido', value: 'fast' }, { label: 'Calidad', va
 
     <div>
       <div class="mb-1.5 flex items-center justify-between">
-        <span class="text-xs font-medium text-slate-600">Turd Size</span>
+        <span class="text-xs font-medium text-slate-600">Filtro de ruido</span>
         <span class="rounded-md bg-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-700">{{ turdSize }}</span>
       </div>
       <input v-model.number="turdSize" type="range" min="1" max="20" step="1" class="w-full accent-cyan-500">
@@ -38,13 +38,13 @@ const modeOptions = [{ label: 'Rápido', value: 'fast' }, { label: 'Calidad', va
 
     <div class="grid grid-cols-2 gap-2">
       <div>
-        <p class="mb-1 text-[11px] font-medium text-slate-500">Scale</p>
+        <p class="mb-1 text-[11px] font-medium text-slate-500">Escala</p>
         <select v-model.number="scale" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/30">
           <option v-for="o in scaleOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
         </select>
       </div>
       <div>
-        <p class="mb-1 text-[11px] font-medium text-slate-500">Mode</p>
+        <p class="mb-1 text-[11px] font-medium text-slate-500">Modo</p>
         <select v-model="mode" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/30">
           <option v-for="o in modeOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
         </select>

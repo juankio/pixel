@@ -45,8 +45,15 @@ const onApplySelectedColor = (color: string) => {
 }
 
 const onRemoveSelected = () => removeSelectedElements(selectedElementIds.value)
-const onInsertText = (options: TextInsertOptions) => insertText(options)
-const onUpdateText = (id: string, options: TextInsertOptions) => updateText(id, options)
+const onInsertText = async (options: TextInsertOptions) => {
+  insertText(options)
+  await autoFit(false)
+}
+
+const onUpdateText = async (id: string, options: TextInsertOptions) => {
+  updateText(id, options)
+  await autoFit(false)
+}
 
 onMounted(() => Promise.allSettled([refreshHealth(), refreshMetrics()]))
 onBeforeUnmount(() => revokePreviewUrl())
@@ -67,7 +74,7 @@ onBeforeUnmount(() => revokePreviewUrl())
       />
 
       <main class="grid gap-6 xl:grid-cols-[380px_1fr]">
-        <aside class="space-y-4 xl:sticky xl:top-6 xl:self-start">
+        <aside class="space-y-4 xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:overflow-y-auto xl:self-start xl:pb-4">
           <ImageUploader
             :disabled="processing"
             :file-name="fileName"
@@ -88,6 +95,14 @@ onBeforeUnmount(() => revokePreviewUrl())
             @download-png="downloadPng"
             @refresh-health="refreshHealth"
             @refresh-metrics="refreshMetrics"
+          />
+          <EditorTextInsert
+            v-if="hasSvg"
+            :disabled="processing"
+            :svg-result="svgResult"
+            :selected-element-id="activeSelectedElementId"
+            @insert-text="onInsertText"
+            @update-text="onUpdateText"
           />
         </aside>
 
@@ -123,14 +138,6 @@ onBeforeUnmount(() => revokePreviewUrl())
             @selected-color-change="onApplySelectedColor"
           />
 
-          <EditorTextInsert
-            v-if="hasSvg"
-            :disabled="processing"
-            :svg-result="svgResult"
-            :selected-element-id="activeSelectedElementId"
-            @insert-text="onInsertText"
-            @update-text="onUpdateText"
-          />
         </section>
       </main>
     </div>

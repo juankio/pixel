@@ -62,6 +62,7 @@ const fontWeight = ref<'normal' | 'bold'>('normal')
 const italic = ref(false)
 const x = ref(50)
 const y = ref(50)
+const rotation = ref(0)
 const textAnchor = ref<'start' | 'middle' | 'end'>('middle')
 
 // Edit mode: tracks which text element is being edited
@@ -98,6 +99,9 @@ watch(() => props.selectedElementId, (id) => {
   const elY = parseFloat(el.getAttribute('y') ?? '0')
   const elFontFamily = el.getAttribute('font-family') ?? 'Arial, sans-serif'
 
+  const transform = el.getAttribute('transform') ?? ''
+  const rotMatch = transform.match(/rotate\(\s*([-\d.]+)/)
+
   content.value = el.textContent ?? ''
   fontSize.value = parseFloat(el.getAttribute('font-size') ?? '48')
   fill.value = el.getAttribute('fill') ?? '#000000'
@@ -105,6 +109,7 @@ watch(() => props.selectedElementId, (id) => {
   italic.value = el.getAttribute('font-style') === 'italic'
   x.value = dims.width > 0 ? Math.round((elX / dims.width) * 100) : 50
   y.value = dims.height > 0 ? Math.round((elY / dims.height) * 100) : 50
+  rotation.value = rotMatch ? parseFloat(rotMatch[1]!) : 0
   textAnchor.value = (el.getAttribute('text-anchor') ?? 'middle') as 'start' | 'middle' | 'end'
   selectedFont.value = FONTS.find(f => f.value === elFontFamily) ?? FONTS[0]!
   editingId.value = id
@@ -122,6 +127,7 @@ const buildOptions = (): TextInsertOptions => ({
   italic: italic.value,
   x: x.value,
   y: y.value,
+  rotation: rotation.value,
   textAnchor: textAnchor.value
 })
 
@@ -263,24 +269,40 @@ const onCancelEdit = () => {
         >{{ content }}</span>
       </div>
 
-      <!-- Posición -->
-      <div class="space-y-2 rounded-xl border border-slate-100 bg-slate-50/60 p-3">
-        <p class="text-xs font-medium text-slate-500">Posición en el SVG</p>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="mb-1 flex items-center justify-between text-xs text-slate-500">
-              Horizontal <span class="font-mono">{{ x }}%</span>
-            </label>
-            <input v-model.number="x" type="range" min="0" max="100" :disabled="disabled"
-              class="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200 accent-cyan-500 disabled:opacity-50" />
-          </div>
-          <div>
-            <label class="mb-1 flex items-center justify-between text-xs text-slate-500">
-              Vertical <span class="font-mono">{{ y }}%</span>
-            </label>
-            <input v-model.number="y" type="range" min="0" max="100" :disabled="disabled"
-              class="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200 accent-cyan-500 disabled:opacity-50" />
-          </div>
+      <!-- Posición y rotación -->
+      <div class="space-y-2.5 rounded-xl border border-slate-100 bg-slate-50/60 p-3">
+        <p class="text-xs font-medium text-slate-500">Posición y rotación</p>
+        <div>
+          <label class="mb-1 flex items-center justify-between text-xs text-slate-500">
+            Horizontal <span class="font-mono">{{ x }}%</span>
+          </label>
+          <input v-model.number="x" type="range" min="0" max="100" :disabled="disabled"
+            class="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200 accent-cyan-500 disabled:opacity-50" />
+        </div>
+        <div>
+          <label class="mb-1 flex items-center justify-between text-xs text-slate-500">
+            Vertical <span class="font-mono">{{ y }}%</span>
+          </label>
+          <input v-model.number="y" type="range" min="0" max="100" :disabled="disabled"
+            class="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200 accent-cyan-500 disabled:opacity-50" />
+        </div>
+        <div>
+          <label class="mb-1 flex items-center justify-between text-xs text-slate-500">
+            <span class="flex items-center gap-1">
+              <UIcon name="i-lucide-rotate-cw" class="size-3" /> Rotación
+            </span>
+            <div class="flex items-center gap-1.5">
+              <button
+                v-for="preset in [-90, 0, 45, 90]"
+                :key="preset"
+                :class="['rounded px-1.5 py-0.5 font-mono text-[10px] transition-all', rotation === preset ? 'bg-cyan-100 text-cyan-700' : 'bg-slate-200 text-slate-500 hover:bg-slate-300']"
+                @click="rotation = preset"
+              >{{ preset }}°</button>
+              <span class="font-mono text-slate-600">{{ rotation }}°</span>
+            </div>
+          </label>
+          <input v-model.number="rotation" type="range" min="-180" max="180" :disabled="disabled"
+            class="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200 accent-cyan-500 disabled:opacity-50" />
         </div>
       </div>
 

@@ -41,5 +41,6 @@ export type TextInsertOptions = {
   italic: boolean
   x: number
   y: number
+  rotation: number
   textAnchor: 'start' | 'middle' | 'end'
 }

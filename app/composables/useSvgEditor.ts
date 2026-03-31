@@ -46,6 +46,18 @@ export const useSvgEditor = () => {
       try {
         const bb = node.getBBox()
         if (!Number.isFinite(bb.x) || !Number.isFinite(bb.y)) continue
+
+        if (bb.width === 0 && bb.height === 0 && node.tagName.toLowerCase() === 'text') {
+          // Font not loaded in hidden div — estimate bounds from attributes
+          const fs = parseFloat(node.getAttribute('font-size') ?? '16')
+          const len = (node.textContent ?? '').length
+          const tx = parseFloat(node.getAttribute('x') ?? '0')
+          const ty = parseFloat(node.getAttribute('y') ?? '0')
+          minX = Math.min(minX, tx); minY = Math.min(minY, ty - fs)
+          maxX = Math.max(maxX, tx + len * fs * 0.6); maxY = Math.max(maxY, ty + fs * 0.3)
+          continue
+        }
+
         if (bb.width === 0 && bb.height === 0) continue
         minX = Math.min(minX, bb.x); minY = Math.min(minY, bb.y)
         maxX = Math.max(maxX, bb.x + bb.width); maxY = Math.max(maxY, bb.y + bb.height)
