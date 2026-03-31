@@ -14,10 +14,19 @@ export type VectorizeResult = {
   raw: unknown
 }
 
+const VECTORIZE_TIMEOUT_MS = 120_000
+const HEALTH_TIMEOUT_MS = 10_000
+
 const normalizeError = (error: unknown): string => {
-  if (error && typeof error === 'object' && 'data' in error) {
-    const data = (error as { data?: { message?: string } }).data
-    if (data?.message) return data.message
+  if (error && typeof error === 'object') {
+    const name = (error as { name?: string }).name
+    if (name === 'TimeoutError' || name === 'AbortError') {
+      return 'La operación tardó demasiado. El servidor puede estar ocupado, intenta de nuevo.'
+    }
+    if ('data' in error) {
+      const data = (error as { data?: { message?: string } }).data
+      if (data?.message) return data.message
+    }
   }
   if (error instanceof Error) return error.message
   return 'No se pudo completar la operación'
@@ -67,7 +76,8 @@ export const useVectorize = () => {
       const raw = await $fetch<unknown>(endpoint, {
         method: 'POST',
         body: toFormData(file, fields),
-        baseURL: apiBase || undefined
+        baseURL: apiBase || undefined,
+        signal: AbortSignal.timeout(VECTORIZE_TIMEOUT_MS)
       })
       return { svg: extractSvgFromResponse(raw), raw }
     } catch (error) {
@@ -86,7 +96,10 @@ export const useVectorize = () => {
 
   const getHealth = async () => {
     try {
-      return await $fetch<unknown>('/api/health', { baseURL: apiBase || undefined })
+      return await $fetch<unknown>('/api/health', {
+        baseURL: apiBase || undefined,
+        signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS)
+      })
     } catch (error) {
       throw new Error(normalizeError(error))
     }
@@ -94,7 +107,10 @@ export const useVectorize = () => {
 
   const getMetrics = async () => {
     try {
-      return await $fetch<unknown>('/api/metrics', { baseURL: apiBase || undefined })
+      return await $fetch<unknown>('/api/metrics', {
+        baseURL: apiBase || undefined,
+        signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS)
+      })
     } catch (error) {
       throw new Error(normalizeError(error))
     }

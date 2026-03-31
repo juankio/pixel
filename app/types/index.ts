@@ -30,3 +30,16 @@ export type SvgColorEntry = {
   raw: string
   hex: string
 }
+
+export type TextInsertOptions = {
+  content: string
+  fontFamily: string
+  googleFont?: string
+  fontSize: number
+  fill: string
+  fontWeight: 'normal' | 'bold'
+  italic: boolean
+  x: number
+  y: number
+  textAnchor: 'start' | 'middle' | 'end'
+}

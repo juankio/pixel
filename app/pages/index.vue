@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { VectorSelectionChangePayload } from '~/types'
+import type { TextInsertOptions, VectorSelectionChangePayload } from '~/types'
 import { useProcessing } from '~/composables/useProcessing'
 import { useImageUpload } from '~/composables/useImageUpload'
 import { useSvgEditor } from '~/composables/useSvgEditor'
@@ -19,6 +19,7 @@ const { runBasicVectorize, runAdvancedVectorize, runUpscaleVectorize, removeSele
   selectedFile, svgResult, svgHistory, autoFitEnabled, withLoader, setVectorSvg, autoFit, pushHistory, resetSelection, refreshMetrics
 )
 const { downloadSvg, downloadPng } = useDownload(svgResult, withLoader)
+const { insertText, updateText } = useTextInsert(svgResult, pushHistory)
 
 const onFileSelected = (file: File) => {
   setFile(file)
@@ -44,6 +45,8 @@ const onApplySelectedColor = (color: string) => {
 }
 
 const onRemoveSelected = () => removeSelectedElements(selectedElementIds.value)
+const onInsertText = (options: TextInsertOptions) => insertText(options)
+const onUpdateText = (id: string, options: TextInsertOptions) => updateText(id, options)
 
 onMounted(() => Promise.allSettled([refreshHealth(), refreshMetrics()]))
 onBeforeUnmount(() => revokePreviewUrl())
@@ -118,6 +121,15 @@ onBeforeUnmount(() => revokePreviewUrl())
             :selected-element-color="selectedElementColor"
             @color-change="applyColorChange"
             @selected-color-change="onApplySelectedColor"
+          />
+
+          <EditorTextInsert
+            v-if="hasSvg"
+            :disabled="processing"
+            :svg-result="svgResult"
+            :selected-element-id="activeSelectedElementId"
+            @insert-text="onInsertText"
+            @update-text="onUpdateText"
           />
         </section>
       </main>
